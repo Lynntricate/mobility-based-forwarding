@@ -9,7 +9,7 @@ import atexit
 
 class Simulator:
     def __init__(self, nodes):
-        self.nodes = nodes
+        self.s_nodes = []
 
         # Initialize TKinter
         self.root = Tk()
@@ -37,9 +37,9 @@ class Simulator:
         # Canvas
         self.canvas = Canvas(self.root, width=self.w, height=self.h)  # Can specify options
 
-
-        self.display_node(Node(50, 50))
-        self.display_node(Node(10, 10))
+        # Initialize nodes
+        for node in nodes:
+            self.display_node(node)
 
         # Start simulation
         self.root.update()
@@ -54,20 +54,20 @@ class Simulator:
         self.display_node(Node(event.x, event.y))
 
     def display_node(self, node: Node):
-        self.canvas.create_oval(
+        self.s_nodes.append(self.canvas.create_oval(
             node.x - self.node_size, node.y - self.node_size, node.x + self.node_size, node.y + self.node_size
-        )
+        ))
         self.canvas.pack()
 
     def physics_update(self):
         if not self.paused:
-            for node in self.nodes:
+            for node in self.s_nodes:
                 pass
 
     def exit_handler(self):
         print(f"{Color.RED}{Color.BOLD}Simulation stopped at:{Color.END} "
               f"{Color.UNDERLINE}{datetime.datetime.now()}{Color.END}")
-        print(len(self.nodes))
+        print(len(self.s_nodes))
 
 
 
