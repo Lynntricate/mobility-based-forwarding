@@ -29,3 +29,24 @@ class Packet:
         self.dst = dst
         self.c_time = c_time
         self.hop_count = hop_count
+        self.payload = None
+
+
+class Coordinate:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+        self.distance = None
+
+
+class Vector:
+    def __init__(self, velocity, heading):
+        self.velocity = velocity
+        self.heading = heading
+
+
+class MobilityPayload:
+    def __init__(self, coordinate, vector):
+        self.coordinate = coordinate
+        self.vector = vector
