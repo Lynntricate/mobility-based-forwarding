@@ -1,14 +1,15 @@
+import uuid
 
 
 class Node:
-    def __init__(self, x, y, waypoints=None):
+    def __init__(self, coordinate, waypoints=None):
         if waypoints is None:
             waypoints = []
 
-        self.x = x
-        self.y = y
+        self.coordinate = coordinate
         self.waypoints = waypoints
         self.queue = []
+        self.id = uuid.uuid4()
 
     def update_pos(self):
         pass
