@@ -12,6 +12,8 @@ and the Node objects themselves
 
 
 def point_bounce(coordinate):
+    # coordinate.x = min(Config.width - 20, max(20, coordinate.x))
+    # coordinate.y = min(Config.height - 20, max(20, coordinate.y))
     if coordinate.x < 0:
         coordinate.x = -coordinate.x
     coordinate.x %= 2 * Config.width
@@ -35,19 +37,23 @@ def generate_waypoint_array(start, length, h_factor, v_factor):
 
     waypoints = [start]
     w_h = random.uniform(0, 2*math.pi)  # Random heading (rad)
-    w_v = random.uniform(Config.min_node_v, Config.max_node_v)  # Random velocity
+    w_d = random.uniform(Config.min_node_d, Config.max_node_d)  # Random velocity
 
-    for i in range(length):
-        w_x = round(waypoints[-1].x + w_v * math.cos(w_h), Config.granularity)  # Determine waypoint x
-        w_y = round(waypoints[-1].y + w_v * math.sin(w_h), Config.granularity)  # Determine waypoint y
+    while len(waypoints) < length:
+        w_h = w_h + h_factor * random.uniform(-math.pi, math.pi)
 
-        waypoints.append(point_bounce(Coordinate(w_x, w_y)))  # Add waypoint to array
-        bruh = h_factor * random.uniform(-math.pi, math.pi)
-        w_h = w_h + bruh
+        w_x = round(waypoints[-1].x + w_d * math.cos(w_h), Config.granularity)  # Determine waypoint x
+        w_y = round(waypoints[-1].y + w_d * math.sin(w_h), Config.granularity)  # Determine waypoint y
 
-        w_v = min(max(w_v + v_factor * random.uniform(-0.5 * Config.node_v_d, 0.5 * Config.node_v_d), Config.min_node_v), Config.max_node_v)
+        if w_x < 0 or w_x > Config.width or w_y < 0 or w_y > Config.height:
+            # Point outside of area, readjust heading and try again
+            continue
 
-    # w_heading = math.atan2(dx, dy)
+        waypoints.append(Coordinate(w_x, w_y))  # Add waypoint to array
+
+        w_h = w_h + h_factor * random.uniform(-math.pi, math.pi)
+
+        w_d = min(max(w_d + v_factor * random.uniform(-0.5 * Config.node_dd, 0.5 * Config.node_dd), Config.min_node_d), Config.max_node_d)
 
     return waypoints
 
@@ -62,15 +68,15 @@ def generate_coordinate(max_x, max_y, min_x=0, min_y=0):
 
 def generate_nodes(count, max_x, max_y, num_waypoints, h_factor, v_factor, min_x=0, min_y=0):
     return [
-        Node(Coordinate(x,y), generate_waypoint_array(Coordinate(x,y), num_waypoints, h_factor, v_factor))
+        Node(Coordinate(x, y), generate_waypoint_array(Coordinate(x,y), num_waypoints, h_factor, v_factor))
         for x, y in generate_coordinate_array(count, max_x, max_y, min_x, min_y)
     ]
 
 
 if __name__ == "__main__":
     random.seed(8908342)
-    print(vars(point_bounce(Coordinate(-1281, 721))))
-    print(vars(point_bounce(Coordinate(-10, -20))))
+    # print(vars(point_bounce(Coordinate(-1281, 721))))
+    # print(vars(point_bounce(Coordinate(-10, -20))))
     # gen = generate_waypoint_array(Coordinate(50, 50), 100)
     # for coord in gen:
     #     print(f"x: {coord.x}, y: {coord.y}" )
