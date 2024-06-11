@@ -6,11 +6,11 @@ from PIL import Image, ImageTk
 from core.config import Config
 from core.node_factory import generate_waypoint_array, generate_coordinate
 from core.simulator_entities import *
-import time
 from graphics.text_formatting import *
 from functools import partial
 import atexit
 import random
+from core.compute import nodes_in_range
 
 
 class Simulator:
@@ -26,7 +26,7 @@ class Simulator:
         self.root = Tk()
 
         # Config
-        self.waypoints_visible = False
+        self.show_waypoints = False
 
         self.node_size = 10
         self.waypoint_size = 5
@@ -63,9 +63,12 @@ class Simulator:
 
         self.initialize_nodes()
 
+        self.started = False
         # Start simulation
+        self.sim_time = 0
         self.root.update()
-        self.physics_update()
+        self.view_update()
+        self.simulation_loop()
         print(f"{Color.GREEN}{Color.BOLD}Simulation started at:{Color.END}"
               f" {Color.UNDERLINE}{datetime.datetime.now()}{Color.END}")
         self.root.mainloop()
@@ -82,47 +85,77 @@ class Simulator:
 
     def display_node(self, node: Node):
         s_node = self.canvas.create_oval(
-            node.coordinate.x - self.node_size, node.coordinate.y - self.node_size, node.coordinate.x + self.node_size, node.coordinate.y + self.node_size, tags=f"Node_{node.id}"
+            node.coordinate.x - self.node_size, node.coordinate.y - self.node_size, node.coordinate.x + self.node_size,
+            node.coordinate.y + self.node_size, tags=f"Node_{node.id}"
         )
         self.canvas.itemconfig(s_node, fill="cyan")
-        self.canvas.tag_bind(f"Node_{node.id}", "<Button-1>", lambda event: self.display_node_waypoints(node))
+        self.canvas.tag_bind(f"Node_{node.id}", "<Button-1>", lambda event: self.toggle_node_waypoints(node))
         self.nodes.append((node, s_node))
 
         self.canvas.pack()
 
-    def display_node_waypoints(self, node: Node):
-        last_coord = Coordinate(node.coordinate.x, node.coordinate.y)
-         # Delete all waypoints
-        for display_object in [tup[1] for tup in self.s_display_objects if tup[0] == node]:
-            self.canvas.delete(display_object)
-        self.s_display_objects = [tup for tup in self.s_display_objects if tup[0] == node]
-
-        for waypoint in node.waypoints:
-            arrow = self.canvas.create_line(last_coord.x, last_coord.y, waypoint.x, waypoint.y, arrow=tk.LAST)
-            self.s_display_objects.append((node, arrow))
-
-            self.s_display_objects.append((node, self.canvas.create_oval(
-                waypoint.x - self.waypoint_size, waypoint.y - self.waypoint_size
-                , waypoint.x + self.waypoint_size, waypoint.y + self.waypoint_size
-            )))
-            last_coord = Coordinate(waypoint.x, waypoint.y)
-
-    def physics_update(self):
+    def view_update(self):
         if not self.paused:
-            for node, display_node in [(node, display_node) for (node, display_node) in self.nodes if not node.finished]:
+            for node, display_node in [(node, display_node) for (node, display_node) in self.nodes if
+                                       not node.finished]:
                 node.update_pos()
-                self.canvas.moveto(display_node, node.coordinate.x - self.waypoint_size, node.coordinate.y - self.waypoint_size)
-        self.root.after(16, self.physics_update)
+                self.canvas.moveto(display_node, node.coordinate.x - self.waypoint_size,
+                                   node.coordinate.y - self.waypoint_size)
+        self.root.after(Config.frame_interval, self.view_update)
+
+    def simulation_loop(self):
+        if not self.paused:
+            """Simulation hooks go here"""
+            self.queue_hook()
+            self.node_time_hook()
+            """Simulation hooks go here"""
+            if self.started:
+                self.sim_time += Config.simulation_interval
+            else:
+                self.started = True
+        self.root.after(Config.simulation_interval, self.simulation_loop)
+
+    def queue_hook(self):
+        for node, _ in self.nodes:
+            node.nodes_in_range = nodes_in_range(node, Config.node_transmit_power, [n for (n, _) in self.nodes if n.id != node.id])
+
+    def node_time_hook(self):
+        for node, _ in self.nodes:
+            node.update_time(self.sim_time)
 
     def toggle_waypoints(self):
-        if not self.waypoints_visible:
-            for node, _ in self.nodes:
-                self.display_node_waypoints(node)
-        else:
-            for _, display_node in self.s_display_objects:
-                self.canvas.delete(display_node)
-            self.s_display_objects = []
-        self.waypoints_visible = not self.waypoints_visible
+        for node, _ in self.nodes:
+            self.toggle_node_waypoints(node, True)
+
+        self.show_waypoints = not self.show_waypoints
+
+    def toggle_node_waypoints(self, node: Node, hide_all=False):
+        #### DEBUG #####
+        print(node.nodes_in_range)
+        print(node.time)
+        #### DEBUG #####
+
+        if node.display_show_waypoints or hide_all:
+            # Remove all node waypoints if previously visible
+            for display_object in node.display_objects:
+                self.canvas.delete(display_object)
+            node.display_objects.clear()
+            node.display_show_waypoints = False
+            return
+
+        last_coord = Coordinate(node.coordinate.x, node.coordinate.y)
+        if not node.display_show_waypoints:
+            # Show all waypoints if previously not visible
+            for waypoint in node.waypoints:
+                arrow = self.canvas.create_line(last_coord.x, last_coord.y, waypoint.x, waypoint.y, arrow=tk.LAST)
+                node.display_objects.append(arrow)
+                node.display_objects.append(self.canvas.create_oval(
+                    waypoint.x - self.waypoint_size, waypoint.y - self.waypoint_size
+                    , waypoint.x + self.waypoint_size, waypoint.y + self.waypoint_size
+                ))
+                last_coord = Coordinate(waypoint.x, waypoint.y)
+            node.display_show_waypoints = True
+            return
 
     def create_node(self, num_waypoints=None, h_factor=None, v_factor=None, coordinate=None):
         if num_waypoints is None: num_waypoints = Config.num_waypoints
@@ -133,23 +166,13 @@ class Simulator:
         self.display_node(node)
 
     def reset_handler(self):
-        for _, display_node in self.nodes:
-            self.canvas.delete(display_node)
-        self.nodes = []
-
-        for _, s_display_object in self.s_display_objects:
-            self.canvas.delete(s_display_object)
-        self.s_display_objects = []
-        self.canvas.pack()
+        print('reset not implemented')
+        pass
 
     def restart_handler(self):
         print(f'Restarting...')
-
 
     def exit_handler(self):
         print(f"{Color.RED}{Color.BOLD}Simulation stopped at:{Color.END} "
               f"{Color.UNDERLINE}{datetime.datetime.now()}{Color.END}")
         self.root.quit()
-
-
-
