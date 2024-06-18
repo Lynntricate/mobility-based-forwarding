@@ -17,7 +17,7 @@ class Simulator:
     def __init__(self, seed):
         random.seed(seed)
 
-        self.nodes = []  # Tuples of node, display_node
+        self.nodes = set()  # Tuples of node, tk_id
         self.s_display_objects = []
 
         self.selected = None
@@ -84,13 +84,16 @@ class Simulator:
         self.display_node(Node(event.x, event.y))
 
     def display_node(self, node: Node):
-        s_node = self.canvas.create_oval(
+        tk_id = self.canvas.create_oval(
             node.coordinate.x - self.node_size, node.coordinate.y - self.node_size, node.coordinate.x + self.node_size,
             node.coordinate.y + self.node_size, tags=f"Node_{node.id}"
         )
-        self.canvas.itemconfig(s_node, fill="cyan")
-        self.canvas.tag_bind(f"Node_{node.id}", "<Button-1>", lambda event: self.toggle_node_waypoints(node))
-        self.nodes.append((node, s_node))
+        self.canvas.itemconfig(tk_id, fill="cyan")
+        # self.canvas.tag_bind(f"Node_{node.id}", "<Button-1>", lambda event: self.toggle_node_waypoints(node))
+        self.canvas.tag_bind(f"Node_{node.id}", "<ButtonPress-1>", lambda event: self.show_nodes_in_range(node))
+        self.canvas.tag_bind(f"Node_{node.id}", "<ButtonRelease-1>", lambda event: self.hide_nodes_in_range())
+
+        self.nodes.add((node, tk_id))
 
         self.canvas.pack()
 
@@ -129,10 +132,27 @@ class Simulator:
 
         self.show_waypoints = not self.show_waypoints
 
+    def show_nodes_in_range(self, node: Node):
+        self.show_circle(node.coordinate, Config.node_transmit_power)
+        for tk_id in [tk_id for n, tk_id in self.nodes if n in node.nodes_in_range]:
+            print(tk_id)
+            self.canvas.itemconfig(tk_id, fill='red')
+
+        print(len(node.nodes_in_range))
+
+    def hide_nodes_in_range(self):
+        self.canvas.delete('range_oval')
+        for tk_id in [tk_id for _, tk_id in self.nodes]:
+            self.canvas.itemconfig(tk_id, fill='cyan')
+
+
+    def show_circle(self, center: Coordinate, diameter):
+        self.canvas.create_oval(center.x - diameter / 2, center.y - diameter / 2 ,center.x + diameter / 2, center.y + diameter / 2, outline='red', width=2, tags='range_oval')
+
+
     def toggle_node_waypoints(self, node: Node, hide_all=False):
         #### DEBUG #####
-        print(node.nodes_in_range)
-        print(node.time)
+        print(len(node.nodes_in_range))
         #### DEBUG #####
 
         if node.display_show_waypoints or hide_all:
@@ -162,7 +182,7 @@ class Simulator:
         if h_factor is None: h_factor = Config.h_factor
         if v_factor is None: v_factor = Config.v_factor
         if coordinate is None: coordinate = generate_coordinate(Config.width, Config.height)
-        node = Node(coordinate, 5, generate_waypoint_array(coordinate, num_waypoints, h_factor, v_factor))
+        node = Node(coordinate, Config.node_velocity, generate_waypoint_array(coordinate, num_waypoints, h_factor, v_factor))
         self.display_node(node)
 
     def reset_handler(self):

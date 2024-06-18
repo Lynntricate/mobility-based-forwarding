@@ -11,24 +11,6 @@ and the Node objects themselves
 """
 
 
-def point_bounce(coordinate):
-    # coordinate.x = min(Config.width - 20, max(20, coordinate.x))
-    # coordinate.y = min(Config.height - 20, max(20, coordinate.y))
-    if coordinate.x < 0:
-        coordinate.x = -coordinate.x
-    coordinate.x %= 2 * Config.width
-    if coordinate.x > Config.width:
-        coordinate.x = 2 * Config.width - coordinate.x
-
-    if coordinate.y < 0:
-        coordinate.y = -coordinate.y
-    coordinate.y %= 2 * Config.height
-    if coordinate.y > Config.height:
-        coordinate.y = 2 * Config.height - coordinate.y
-
-    return coordinate
-
-
 def generate_waypoint_array(start, length, h_factor, v_factor):
     if length < 0:
         Exception('Length cannot be smaller than 0')
@@ -75,6 +57,7 @@ def generate_nodes(count, max_x, max_y, num_waypoints, h_factor, v_factor, min_x
 
 if __name__ == "__main__":
     random.seed(8908342)
+
     # print(vars(point_bounce(Coordinate(-1281, 721))))
     # print(vars(point_bounce(Coordinate(-10, -20))))
     # gen = generate_waypoint_array(Coordinate(50, 50), 100)
