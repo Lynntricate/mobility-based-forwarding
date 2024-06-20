@@ -63,6 +63,9 @@ class Simulator:
 
         self.initialize_nodes()
 
+        # Debug
+        self.debug_destination = None
+
         self.started = False
         # Start simulation
         self.sim_time = 0
@@ -90,8 +93,12 @@ class Simulator:
         )
         self.canvas.itemconfig(tk_id, fill="cyan")
         # self.canvas.tag_bind(f"Node_{node.id}", "<Button-1>", lambda event: self.toggle_node_waypoints(node))
-        self.canvas.tag_bind(f"Node_{node.id}", "<ButtonPress-1>", lambda event: self.show_nodes_in_range(node))
-        self.canvas.tag_bind(f"Node_{node.id}", "<ButtonRelease-1>", lambda event: self.hide_nodes_in_range())
+        self.canvas.tag_bind(f"Node_{node.id}", "<Button-1>", lambda event: self.select_debug_source(node))
+
+        self.canvas.tag_bind(f"Node_{node.id}", "<ButtonPress-2>", lambda event: self.show_nodes_in_range(node))
+        self.canvas.tag_bind(f"Node_{node.id}", "<ButtonRelease-2>", lambda event: self.hide_nodes_in_range())
+
+        self.canvas.tag_bind(f"Node_{node.id}", "<Button-3>", lambda event: self.select_debug_destination(node))
 
         self.nodes.add((node, tk_id))
 
@@ -120,11 +127,33 @@ class Simulator:
 
     def queue_hook(self):
         for node, _ in self.nodes:
-            node.nodes_in_range = nodes_in_range(node, Config.node_transmit_power, [n for (n, _) in self.nodes if n.id != node.id])
+            old_len = len(node.nodes_in_range)
+            new_nodes = nodes_in_range(node, Config.node_transmit_power, [n for (n, _) in self.nodes if n.id != node.id])
+            new_len = len(new_nodes)
+            node.nodes_in_range = new_nodes
+            if old_len != new_len:
+                # Create update
+                packet = Packet(
+                    p_type=PacketType.TRAFFIC_UPDATE,
+                    src=node.id,
+                    dst=None,
+                    c_time=self.sim_time,
+                    hop_count=0,
+                    payload={
+                        **node.node_estimations,
+                        **{node.id: MobilityPayload(
+                                   coordinate=node.coordinate,
+                                   vector=node.vector,
+                                   timestamp=node.sim_time
+                        )}},
+                )
+                # Broadcast update
+                node.transmit(packet, relay='broadcast')
 
     def node_time_hook(self):
         for node, _ in self.nodes:
-            node.update_time(self.sim_time)
+            Node.sim_time = self.sim_time
+            # node.update_time(self.sim_time)
 
     def toggle_waypoints(self):
         for node, _ in self.nodes:
@@ -138,17 +167,41 @@ class Simulator:
             print(tk_id)
             self.canvas.itemconfig(tk_id, fill='red')
 
-        print(len(node.nodes_in_range))
+        # [print(n) for n in node.node_estimations.values()]
+
+    def select_debug_source(self, node: Node):
+        if self.debug_destination is None:
+            print('No debug destination selected...')
+            return
+        packet = Packet(
+            p_type=PacketType.DATA,
+            src=node.id,
+            dst=self.debug_destination.id,
+            c_time=self.sim_time,
+            hop_count=0,
+            payload='DUMMYPAYLOAD'
+        )
+        node.transmit(packet, relay='unicast')
+
+    def select_debug_destination(self, node: Node):
+        if self.debug_destination:
+            for n, tk_id in self.nodes:
+                if n == self.debug_destination:
+                    self.canvas.itemconfig(tk_id, fill='cyan')
+                    self.debug_destination = None
+
+        for n, tk_id in self.nodes:
+            if n == node:
+                self.canvas.itemconfig(tk_id, fill='green')
+                self.debug_destination = n
 
     def hide_nodes_in_range(self):
         self.canvas.delete('range_oval')
         for tk_id in [tk_id for _, tk_id in self.nodes]:
             self.canvas.itemconfig(tk_id, fill='cyan')
 
-
     def show_circle(self, center: Coordinate, diameter):
         self.canvas.create_oval(center.x - diameter / 2, center.y - diameter / 2 ,center.x + diameter / 2, center.y + diameter / 2, outline='red', width=2, tags='range_oval')
-
 
     def toggle_node_waypoints(self, node: Node, hide_all=False):
         #### DEBUG #####
