@@ -33,9 +33,10 @@ def compute_packet_generation_times(mean_production_interval):
     # Create as many random generation intervals as there is (on average) time for in the simulation
     inter_arrival_time_samples = \
         np.random.exponential(mean_production_interval,
-                              size=int((Config.max_sim_time/Config.mean_packet_production_interval)/2))
+                              size=int((Config.max_sim_time/Config.mean_packet_production_interval)/5))
 
-    inter_arrival_times = (np.ceil(inter_arrival_time_samples / 100) * 100).astype(int)
+    inter_arrival_times = (np.ceil(inter_arrival_time_samples
+                                   / Config.simulation_interval) * Config.simulation_interval).astype(int)
 
     for i, inter_arrival_time in enumerate(inter_arrival_times):
         if i == 0:
@@ -44,11 +45,19 @@ def compute_packet_generation_times(mean_production_interval):
 
     return inter_arrival_times.tolist()
 
+def test( power):
+    r_2 = (power / 2)**2
+    coord_a = Coordinate(417.33309, 739.79125)
+    coords = [Coordinate(549.41241, 805.83848), Coordinate(296.71755, 478.22763)]
+    return [coord for coord in coords if ((coord.x - coord_a.x)**2 + (coord.y - coord_a.y)**2) <= r_2]
 
 
 if __name__ == '__main__':
+    print(test(200))
+
     print(compute_packet_generation_times(Config.mean_packet_production_interval))
-    [].pop(0)
+    print(point_bounce(Coordinate(100, 1000)))
+
     # print(point_bounce(Coordinate(-100, 0)))
     # print(point_bounce(Coordinate(-50, -50)))
     # print(point_bounce(Coordinate(200, 2000)))

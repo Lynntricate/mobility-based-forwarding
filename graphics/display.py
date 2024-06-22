@@ -82,6 +82,8 @@ class Simulator:
     def initialize_nodes(self):
         for i in range(Config.n_nodes):
             self.create_node(Config.num_waypoints)
+        for node, _ in self.nodes:
+            node.all_node_ids = [node.id for node, _ in self.nodes]
 
     def space_bar_pressed(self, event):
         self.paused = not self.paused
@@ -92,10 +94,10 @@ class Simulator:
             node.coordinate.y + self.node_size, tags=f"Node_{node.id}"
         )
         self.canvas.itemconfig(tk_id, fill="cyan")
-        # self.canvas.tag_bind(f"Node_{node.id}", "<Button-1>", lambda event: self.toggle_node_waypoints(node))
+        # self.canvas.tag_bind(f"Node_{node.id}", "<Button-2>", lambda event: self.toggle_node_waypoints(node))
         self.canvas.tag_bind(f"Node_{node.id}", "<Button-1>", lambda event: self.select_debug_source(node))
 
-        self.canvas.tag_bind(f"Node_{node.id}", "<ButtonPress-2>", lambda event: self.show_nodes_in_range(node))
+        self.canvas.tag_bind(f"Node_{node.id}", "<ButtonPress-2>", lambda event: self.show_nodes_in_range(event, node))
         self.canvas.tag_bind(f"Node_{node.id}", "<ButtonRelease-2>", lambda event: self.hide_nodes_in_range())
 
         self.canvas.tag_bind(f"Node_{node.id}", "<Button-3>", lambda event: self.select_debug_destination(node))
@@ -127,11 +129,14 @@ class Simulator:
         self.root.after(Config.simulation_interval, self.simulation_loop)
 
     def queue_hook(self):
-        for node in [n for n, _ in self.nodes if not n.finished]:
+        for node in [n for n, _ in self.nodes]:
             # Node processes
-            node.update_core()
+            if not node.finished:
+                node.update_core()
 
-            # For all nodes in siulator, check which ones are in range, and send update if necessary
+            # print(nodes_in_range(node, Config.node_transmit_power, [n for (n, _) in self.nodes if n.id != node.id]))
+
+            # For all nodes in simulator, check which ones are in range, and send update if necessary
             old_len = len(node.nodes_in_range)
             new_nodes = nodes_in_range(node, Config.node_transmit_power, [n for (n, _) in self.nodes if n.id != node.id])
             new_len = len(new_nodes)
@@ -168,14 +173,41 @@ class Simulator:
 
         self.show_waypoints = not self.show_waypoints
 
-    def show_nodes_in_range(self, node: Node):
-        self.show_circle(node.coordinate, Config.node_transmit_power)
-        for tk_id in [tk_id for n, tk_id in self.nodes if n in node.nodes_in_range]:
-            print(tk_id)
+    def show_nodes_in_range(self, event, node: Node):
+        center = Coordinate(x=node.coordinate.x+4, y=node.coordinate.y + (self.node_size / 2))
+        self.show_circle(center, Config.node_transmit_power)
+        for n, tk_id in [(n, tk_id) for (n, tk_id) in self.nodes if n in node.nodes_in_range]:
             self.canvas.itemconfig(tk_id, fill='red')
+        print(node.vector.velocity)
+        print(node.coordinate)
+
+        if node.radioTask is not None:
+            estimate = node.estimate_current_coordinate(node.radioTask.queue_item.packet.dst)
+            arrow = self.canvas.create_line(node.coordinate.x, node.coordinate.y, estimate.x, estimate.y, arrow=tk.LAST)
+            self.s_display_objects.append(arrow)
+
+            for n, tk_id in self.nodes:
+                # if n.id == 'Node_66404858':
+                #     self.canvas.itemconfig(tk_id, fill='pink')
+                if node.radioTask.relay is not None:
+                    if n.id == node.radioTask.relay.id and n.id == node.radioTask.queue_item.packet.dst:
+                        self.canvas.itemconfig(tk_id, fill='orange')
+                    if n.id == node.radioTask.relay.id:
+                        self.canvas.itemconfig(tk_id, fill='yellow')
+                        print(node.radioTask.relay in node.nodes_in_range)
+                if n.id == node.radioTask.queue_item.packet.dst:
+                    print('DESTINATION KNOWN')
+                    self.canvas.itemconfig(tk_id, fill='green')
+
 
         # [print(n) for n in node.node_estimations.values()]
-        print(node.radioTask, node.queue)
+        print(node.id, f'task_remaining: {node.radioTask}  queueLength: {len(node.queue)}')
+        # print('------------------------Start--------------------------------')
+        # print(node.coordinate, [event.x, event.y])
+        # for nb in node.nodes_in_range:
+        #     print(nb.coordinate)
+        # print('------------------------ End --------------------------------') Node_73017958
+
 
     def select_debug_source(self, node: Node):
         if self.debug_destination is None:
@@ -200,14 +232,15 @@ class Simulator:
         self.canvas.delete('range_oval')
         for tk_id in [tk_id for _, tk_id in self.nodes]:
             self.canvas.itemconfig(tk_id, fill='cyan')
+        for tk_id in self.s_display_objects:
+            self.canvas.delete(tk_id)
 
     def show_circle(self, center: Coordinate, diameter):
-        self.canvas.create_oval(center.x - diameter / 2, center.y - diameter / 2 ,center.x + diameter / 2, center.y + diameter / 2, outline='red', width=2, tags='range_oval')
+        self.canvas.create_oval(center.x - (diameter / 2), center.y - (diameter / 2),center.x + (diameter / 2), center.y + (diameter / 2), outline='red', width=2, tags='range_oval')
 
     def toggle_node_waypoints(self, node: Node, hide_all=False):
         #### DEBUG #####
-        print(len(node.nodes_in_range))
-        #### DEBUG #####
+          #### DEBUG #####
 
         if node.display_show_waypoints or hide_all:
             # Remove all node waypoints if previously visible
@@ -238,7 +271,7 @@ class Simulator:
         if coordinate is None: coordinate = generate_coordinate(Config.width, Config.height)
         node = Node(f"Node_{random.randint(0, 99999999)}"
                     , coordinate
-                    , Config.node_velocity
+                    , random.uniform(Config.min_node_velocity, Config.max_node_velocity)
                     , generate_waypoint_array(coordinate
                     , num_waypoints
                     , h_factor
@@ -256,17 +289,50 @@ class Simulator:
         total_success = 0
         total_sent = 0
         total_queue = 0
+        total_queue_limit_exceeded = 0
+        total_failure_hop_limit_exceeded = 0
+        total_failure_tx_limit_exceeded = 0
+        all_rcvd_packets = []
         for node, _ in self.nodes:
             total_success += node.count_success
             total_sent += node.count_sent
             total_queue += len(node.queue)
+            if node.radioTask is not None:
+                total_queue += 1
+            total_queue_limit_exceeded += node.count_failure_queue_limit_exceeded
+            total_failure_hop_limit_exceeded += node.count_failure_hop_limit_exceeded
+            total_failure_tx_limit_exceeded += node.count_failure_tx_limit_exceeded
+            all_rcvd_packets.extend(node.received_packets)
+            all_packet_delays = [p.aether_time for p in all_rcvd_packets]
+            all_hop_counts = [p.hop_count for p in all_rcvd_packets]
+
+        # Count failures
+        all_ids = [p.id for p in all_rcvd_packets]
+        failure_count = 0
+        success_count = 0
+        print(all_rcvd_packets)
+        print(len(all_rcvd_packets))
+        for node, _ in self.nodes:
+            for p_id in node.sent_packet_ids:
+                if p_id not in all_ids:
+                    failure_count += 1
+                else:
+                    success_count += 1
+
 
         print(f"{Color.RED}{Color.BOLD}Simulation stopped at:{Color.END} "
               f"{Color.UNDERLINE}{datetime.datetime.now()}{Color.END}")
         print("------------------------------SUMMARY-----------------------------------")
         print(f"Success: {Color.GREEN}{Color.BOLD}{total_success}{Color.END}")
-        print(f"Failure: {Color.RED}{Color.BOLD}{total_sent - total_success - total_queue}{Color.END}")
-        print(f"In queue: {Color.BLUE}{Color.BOLD}{total_queue}{Color.END}")
+        print(f"Total failed: {Color.RED}{Color.BOLD}{failure_count}{Color.END}")
+        print(f"      Queue limit : {Color.RED}{Color.BOLD}{total_queue_limit_exceeded}{Color.END}")
+        print(f"      Hop limit   : {Color.RED}{Color.BOLD}{total_failure_hop_limit_exceeded}{Color.END}")
+        print(f"      Tx limit    : {Color.RED}{Color.BOLD}{total_failure_tx_limit_exceeded}{Color.END}")
+        print(f"In queue : {Color.BLUE}{Color.BOLD}{total_queue}{Color.END}")
+        print(f"Avg delay: {Color.PURPLE}{Color.BOLD}{round((sum(all_packet_delays)/len(all_packet_delays)/1000), 2)}{Color.END}")
+        print(failure_count, success_count)
+
         print("------------------------------------------------------------------------")
         print(f"Total sent: {Color.CYAN}{total_sent}{Color.END}")
+        print(Config.strategy)
         self.root.quit()
