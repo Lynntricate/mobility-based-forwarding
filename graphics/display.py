@@ -11,11 +11,14 @@ from functools import partial
 import atexit
 import random
 from core.compute import nodes_in_range
+import numpy as np
 
 
 class Simulator:
     def __init__(self, seed):
+        # Seed random number generators
         random.seed(seed)
+        np.random.seed(seed)
 
         self.nodes = set()  # Tuples of node, tk_id
         self.s_display_objects = []
@@ -83,9 +86,6 @@ class Simulator:
     def space_bar_pressed(self, event):
         self.paused = not self.paused
 
-    def left_mouse_clicked(self, event):
-        self.display_node(Node(event.x, event.y))
-
     def display_node(self, node: Node):
         tk_id = self.canvas.create_oval(
             node.coordinate.x - self.node_size, node.coordinate.y - self.node_size, node.coordinate.x + self.node_size,
@@ -106,8 +106,7 @@ class Simulator:
 
     def view_update(self):
         if not self.paused:
-            for node, display_node in [(node, display_node) for (node, display_node) in self.nodes if
-                                       not node.finished]:
+            for node, display_node in self.nodes:
                 node.update_pos()
                 self.canvas.moveto(display_node, node.coordinate.x - self.waypoint_size,
                                    node.coordinate.y - self.waypoint_size)
@@ -123,10 +122,16 @@ class Simulator:
                 self.sim_time += Config.simulation_interval
             else:
                 self.started = True
+        if self.sim_time >= Config.max_sim_time:
+            self.root.destroy()
         self.root.after(Config.simulation_interval, self.simulation_loop)
 
     def queue_hook(self):
-        for node, _ in self.nodes:
+        for node in [n for n, _ in self.nodes if not n.finished]:
+            # Node processes
+            node.update_core()
+
+            # For all nodes in siulator, check which ones are in range, and send update if necessary
             old_len = len(node.nodes_in_range)
             new_nodes = nodes_in_range(node, Config.node_transmit_power, [n for (n, _) in self.nodes if n.id != node.id])
             new_len = len(new_nodes)
@@ -146,9 +151,11 @@ class Simulator:
                                    vector=node.vector,
                                    timestamp=node.sim_time
                         )}},
+                    tx_time=0,
+                    tx_mode='broadcast'
                 )
                 # Broadcast update
-                node.transmit(packet, relay='broadcast')
+                node.broadcast_zero_time(packet)
 
     def node_time_hook(self):
         for node, _ in self.nodes:
@@ -168,20 +175,14 @@ class Simulator:
             self.canvas.itemconfig(tk_id, fill='red')
 
         # [print(n) for n in node.node_estimations.values()]
+        print(node.radioTask, node.queue)
 
     def select_debug_source(self, node: Node):
         if self.debug_destination is None:
             print('No debug destination selected...')
             return
-        packet = Packet(
-            p_type=PacketType.DATA,
-            src=node.id,
-            dst=self.debug_destination.id,
-            c_time=self.sim_time,
-            hop_count=0,
-            payload='DUMMYPAYLOAD'
-        )
-        node.transmit(packet, relay='unicast')
+
+        node.queue_new_data_packet(payload='DUMMYPAYLOAD', tx_mode='unicast', prio=999)
 
     def select_debug_destination(self, node: Node):
         if self.debug_destination:
@@ -235,7 +236,13 @@ class Simulator:
         if h_factor is None: h_factor = Config.h_factor
         if v_factor is None: v_factor = Config.v_factor
         if coordinate is None: coordinate = generate_coordinate(Config.width, Config.height)
-        node = Node(coordinate, Config.node_velocity, generate_waypoint_array(coordinate, num_waypoints, h_factor, v_factor))
+        node = Node(f"Node_{random.randint(0, 99999999)}"
+                    , coordinate
+                    , Config.node_velocity
+                    , generate_waypoint_array(coordinate
+                    , num_waypoints
+                    , h_factor
+                    , v_factor))
         self.display_node(node)
 
     def reset_handler(self):
@@ -246,6 +253,20 @@ class Simulator:
         print(f'Restarting...')
 
     def exit_handler(self):
+        total_success = 0
+        total_sent = 0
+        total_queue = 0
+        for node, _ in self.nodes:
+            total_success += node.count_success
+            total_sent += node.count_sent
+            total_queue += len(node.queue)
+
         print(f"{Color.RED}{Color.BOLD}Simulation stopped at:{Color.END} "
               f"{Color.UNDERLINE}{datetime.datetime.now()}{Color.END}")
+        print("------------------------------SUMMARY-----------------------------------")
+        print(f"Success: {Color.GREEN}{Color.BOLD}{total_success}{Color.END}")
+        print(f"Failure: {Color.RED}{Color.BOLD}{total_sent - total_success - total_queue}{Color.END}")
+        print(f"In queue: {Color.BLUE}{Color.BOLD}{total_queue}{Color.END}")
+        print("------------------------------------------------------------------------")
+        print(f"Total sent: {Color.CYAN}{total_sent}{Color.END}")
         self.root.quit()

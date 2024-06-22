@@ -50,7 +50,7 @@ def generate_coordinate(max_x, max_y, min_x=0, min_y=0):
 
 def generate_nodes(count, max_x, max_y, num_waypoints, h_factor, v_factor, min_x=0, min_y=0):
     return [
-        Node(Coordinate(x, y), generate_waypoint_array(Coordinate(x,y), num_waypoints, h_factor, v_factor))
+        Node(f"Node_{random.randint(0, 99999999)}", Coordinate(x, y), generate_waypoint_array(Coordinate(x,y), num_waypoints, h_factor, v_factor))
         for x, y in generate_coordinate_array(count, max_x, max_y, min_x, min_y)
     ]
 
