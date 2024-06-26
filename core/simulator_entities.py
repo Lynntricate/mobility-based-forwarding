@@ -119,6 +119,7 @@ class Node:
         self.id = id
 
         # Radio
+        self.prophet_old_nodes_in_range = set()
         self.nodes_in_range = set()
         self.node_estimations = {}  # key: dst_id, value: velocity_payload
         self.radioTask: Optional[RadioTask] = None
@@ -142,6 +143,10 @@ class Node:
         """
         Used to check for things that need to be done when time steps pass
         """
+        if Config.strategy == 'prophet' and self.sim_time % 1000 == 0:
+            # Age probabilities
+            self.prophet_age()
+
         if len(self.gen_timestamps):
             if self.sim_time == self.gen_timestamps[0]:
                 # Generation timestamp reached!
@@ -252,9 +257,26 @@ class Node:
     def update_vector(self, velocity):
         self.vector = Vector(velocity, math.atan2(self.waypoints[self.waypointer].y - self.coordinate.y, self.waypoints[self.waypointer].x - self.coordinate.x))
 
-    def update_traffic_table(self, traffic_data, c_time):
-        for node_id in [node_id for node_id in traffic_data.keys() if node_id != self.id]:
-            self.node_estimations[node_id] = traffic_data[node_id]
+    def update_traffic_table(self, src_id, traffic_data, c_time, strategy=Config.strategy):
+        if strategy == 'mbf':
+            for node_id in [node_id for node_id in traffic_data.keys() if node_id != self.id]:
+                self.node_estimations[node_id] = traffic_data[node_id]
+        if strategy == 'prophet':
+
+            if src_id not in [n.id for n in self.prophet_old_nodes_in_range] and src_id in [n.id for n in self.nodes_in_range]:
+                start_p_src = self.node_estimations[src_id]
+                # NEW ENCOUNTER
+                # Update probability to encountered node according to PRoPHET algorithm
+                self.node_estimations[src_id] = self.node_estimations[src_id] + (1 - self.node_estimations[src_id]) * Config.prophet_p_init
+                # print(f'Src_diff: {self.node_estimations[src_id] - start_p_src}')
+
+                for node_id in [node_id for node_id in traffic_data.keys() if node_id != self.id]:
+                    start_p_n = self.node_estimations[node_id]
+                    # Update all other nodes according to PRoPHET algorithm
+                    self.node_estimations[node_id] \
+                        = self.node_estimations[node_id] + (1 - self.node_estimations[node_id]) \
+                          * self.node_estimations[src_id] * traffic_data[node_id] * Config.prophet_beta
+                    # print(f'N_diff: {self.node_estimations[node_id] - start_p_n}')
 
     def broadcast_zero_time(self, packet):
         """
@@ -276,10 +298,9 @@ class Node:
             return
 
         if packet_.p_type == PacketType.TRAFFIC_UPDATE:
-            self.update_traffic_table(packet_.payload, packet_.c_time)
+            self.update_traffic_table(packet_.src, packet_.payload, packet_.c_time)
         elif packet_.p_type == PacketType.DATA:
             if packet_.dst == self.id:
-                # ToDo Process success
                 packet_.aether_time = self.sim_time - packet_.c_time
                 print(f'Packet {packet_.id} received at destination succesfully in '
                       f'{packet_.hop_count} hops and {packet_.aether_time} ms!')
@@ -342,6 +363,11 @@ class Node:
                 # Do not forward, keep packet ourselves
                 return None
             return relays[0]
+        elif strategy == 'prophet':
+            relays = sorted(self.nodes_in_range, key=lambda node: self.node_estimations[node.id], reverse=True)
+            if len(relays) == 0:
+                return None
+            return relays[0]
         elif strategy == 'random':
             choice = random.randint(0, len(self.nodes_in_range))
             if choice == 0:
@@ -350,10 +376,6 @@ class Node:
                 return list(self.nodes_in_range)[choice - 1]
 
     def queue_new_data_packet(self, payload=None, tx_mode='unicast', prio=0):
-        if len(self.node_estimations) == 0:
-            # No known destinations
-            print(f"Node {self} cannot append to queue because it has no known destinations!")
-            return
 
         destination_id = random.choice(self.all_node_ids)
         packet = Packet(
@@ -388,12 +410,11 @@ class Node:
     def queue_insert(self, queue_item, index=None):
         old_len = len(self.queue)
         if len(self.queue) == Config.max_queue_length:
-            print(f'Exceeding queue length of {Config.max_queue_length} evicting with {Color.UNDERLINE}SHLI{Color.END}')
+            # print(f'Exceeding queue length of {Config.max_queue_length} evicting with {Color.UNDERLINE}SHLI{Color.END}')
             self.count_failure_queue_limit_exceeded += 1
             shli_select = sorted([q_i for q_i in self.queue], key=lambda q_i: q_i.packet.c_time)[0]
             if shli_select.packet.c_time < queue_item.packet.c_time:
                 # New queue item is younger than one or more other queue items -> evict oldest one
-                print(shli_select.packet.c_time, queue_item.packet.c_time)
                 self.queue.remove(shli_select)
             else:
                 # Otherwise, new queue item is older than all current queue items
@@ -417,6 +438,14 @@ class Node:
         for node in self.nodes_in_range:
             if node.id == node_id:
                 return node
+
+    def prophet_init(self):
+        for n_id in self.all_node_ids:
+            self.node_estimations[n_id] = 0
+
+    def prophet_age(self):
+        for node_id in self.node_estimations.keys():
+            self.node_estimations[node_id] = self.node_estimations[node_id] * Config.prophet_gamma
 
 
     def __str__(self):

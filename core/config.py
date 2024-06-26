@@ -18,22 +18,29 @@ class Config:
     node_velocity_dd = 5
 
     n_nodes = 60
-    node_transmit_power = 300
+    node_transmit_power = 100
 
     frame_interval = 16  # ms
-    simulation_interval = 64  # ms
-    mean_packet_production_interval = 6_000  # ms
+    simulation_interval = 50  # ms
+    mean_packet_production_interval = 3_000  # ms
 
     # max_age_traffic_data = 10_000  # ms
     max_sim_time = 60_000  # ms
 
     max_tx_failure = 9000
     max_hops = 10
-    max_queue_length = 10
+    max_queue_length = 5 # 10
     min_relay_improvement = 0.2
 
-    strategy = 'mbf'
-    # ToDo do not remove from the queue the packet... (for count, count unique ids)
+    strategy = 'prophet'
+
+
+    # PRoPHET
+    prophet_p_init = 0.75  # Used for adjusting probability to encountered nodes (0 < prophet_p_init < 1)
+    prophet_beta = 0.25    # Used for adjusting probabilities to nodes known to encountered nodes (0 < prophet_beta < 1)
+    # Aging occurs once every timestep (so once every simulation_interval in milliseconds)
+    prophet_gamma = 0.99  # Used for aging probabilities, once per second (0 < prophet_gamma < 1)
+
 
 
 

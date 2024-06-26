@@ -84,6 +84,9 @@ class Simulator:
             self.create_node(Config.num_waypoints)
         for node, _ in self.nodes:
             node.all_node_ids = [node.id for node, _ in self.nodes]
+            if Config.strategy == 'prophet':
+                # Set all probabilities to 0 at the start
+                node.prophet_init()
 
     def space_bar_pressed(self, event):
         self.paused = not self.paused
@@ -140,27 +143,56 @@ class Simulator:
             old_len = len(node.nodes_in_range)
             new_nodes = nodes_in_range(node, Config.node_transmit_power, [n for (n, _) in self.nodes if n.id != node.id])
             new_len = len(new_nodes)
+            node.prophet_old_nodes_in_range = node.nodes_in_range
             node.nodes_in_range = new_nodes
             if old_len != new_len:
-                # Create update
-                packet = Packet(
-                    p_type=PacketType.TRAFFIC_UPDATE,
-                    src=node.id,
-                    dst=None,
-                    c_time=self.sim_time,
-                    hop_count=0,
-                    payload={
-                        **node.node_estimations,
-                        **{node.id: MobilityPayload(
-                                   coordinate=node.coordinate,
-                                   vector=node.vector,
-                                   timestamp=node.sim_time
-                        )}},
-                    tx_time=0,
-                    tx_mode='broadcast'
-                )
-                # Broadcast update
-                node.broadcast_zero_time(packet)
+                self.send_service_broadcast_packet(src_node=node)
+                # # Create update
+                # packet = Packet(
+                #     p_type=PacketType.TRAFFIC_UPDATE,
+                #     src=node.id,
+                #     dst=None,
+                #     c_time=self.sim_time,
+                #     hop_count=0,
+                #     payload={
+                #         **node.node_estimations,
+                #         **{node.id: MobilityPayload(
+                #                    coordinate=node.coordinate,
+                #                    vector=node.vector,
+                #                    timestamp=node.sim_time
+                #         )}},
+                #     tx_time=0,
+                #     tx_mode='broadcast'
+                # )
+                # # Broadcast update
+                # node.broadcast_zero_time(packet)
+
+    def send_service_broadcast_packet(self, src_node, strategy=Config.strategy):
+        packet = Packet(
+                p_type=PacketType.TRAFFIC_UPDATE,
+                src=src_node.id,
+                dst=None,
+                c_time=self.sim_time,
+                hop_count=0,
+                # payload=
+                tx_time=0,
+                tx_mode='broadcast'
+            )
+        if strategy == 'mbf':
+        # Create payload for Mobility Based Forwarding
+            packet.payload = {
+                    **src_node.node_estimations,
+                    **{src_node.id: MobilityPayload(
+                        coordinate=src_node.coordinate,
+                        vector=src_node.vector,
+                        timestamp=src_node.sim_time
+                    )}}
+        elif strategy == 'prophet':
+            packet.payload = {
+                **src_node.node_estimations
+            }
+        # Broadcast update
+        src_node.broadcast_zero_time(packet)
 
     def node_time_hook(self):
         for node, _ in self.nodes:
@@ -178,30 +210,30 @@ class Simulator:
         self.show_circle(center, Config.node_transmit_power)
         for n, tk_id in [(n, tk_id) for (n, tk_id) in self.nodes if n in node.nodes_in_range]:
             self.canvas.itemconfig(tk_id, fill='red')
-        print(node.vector.velocity)
-        print(node.coordinate)
 
         if node.radioTask is not None:
-            estimate = node.estimate_current_coordinate(node.radioTask.queue_item.packet.dst)
-            arrow = self.canvas.create_line(node.coordinate.x, node.coordinate.y, estimate.x, estimate.y, arrow=tk.LAST)
-            self.s_display_objects.append(arrow)
+            if Config.strategy == 'mbf' or Config.strategy == 'random':
+                estimate = node.estimate_current_coordinate(node.radioTask.queue_item.packet.dst)
+                arrow = self.canvas.create_line(node.coordinate.x, node.coordinate.y, estimate.x, estimate.y, arrow=tk.LAST)
+                self.s_display_objects.append(arrow)
 
-            for n, tk_id in self.nodes:
-                # if n.id == 'Node_66404858':
-                #     self.canvas.itemconfig(tk_id, fill='pink')
-                if node.radioTask.relay is not None:
-                    if n.id == node.radioTask.relay.id and n.id == node.radioTask.queue_item.packet.dst:
-                        self.canvas.itemconfig(tk_id, fill='orange')
-                    if n.id == node.radioTask.relay.id:
-                        self.canvas.itemconfig(tk_id, fill='yellow')
-                        print(node.radioTask.relay in node.nodes_in_range)
-                if n.id == node.radioTask.queue_item.packet.dst:
-                    print('DESTINATION KNOWN')
-                    self.canvas.itemconfig(tk_id, fill='green')
+                for n, tk_id in self.nodes:
+                    if node.radioTask.relay is not None:
+                        if n.id == node.radioTask.relay.id and n.id == node.radioTask.queue_item.packet.dst:
+                            self.canvas.itemconfig(tk_id, fill='orange')
+                        if n.id == node.radioTask.relay.id:
+                            self.canvas.itemconfig(tk_id, fill='yellow')
+                            print(node.radioTask.relay in node.nodes_in_range)
+                    if n.id == node.radioTask.queue_item.packet.dst:
+                        print('DESTINATION KNOWN')
+                        self.canvas.itemconfig(tk_id, fill='green')
+        if Config.strategy == 'prophet':
+            print(node.id)
+            print(f'Good: {[(node_id, value) for node_id, value in node.node_estimations.items() if value > 0.0001]}')
 
 
         # [print(n) for n in node.node_estimations.values()]
-        print(node.id, f'task_remaining: {node.radioTask}  queueLength: {len(node.queue)}')
+        # print(node.id, f'task_remaining: {node.radioTask}  queueLength: {len(node.queue)}')
         # print('------------------------Start--------------------------------')
         # print(node.coordinate, [event.x, event.y])
         # for nb in node.nodes_in_range:
