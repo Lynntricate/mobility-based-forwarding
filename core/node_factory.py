@@ -33,7 +33,7 @@ def generate_waypoint_array(start, length, h_factor, v_factor):
 
         waypoints.append(Coordinate(w_x, w_y))  # Add waypoint to array
 
-        w_h = w_h + h_factor * random.uniform(-math.pi, math.pi)
+        w_h = w_h + (h_factor * random.uniform(-math.pi, math.pi))
 
         w_d = min(max(w_d + v_factor * random.uniform(-0.5 * Config.node_dd, 0.5 * Config.node_dd), Config.min_node_d), Config.max_node_d)
 

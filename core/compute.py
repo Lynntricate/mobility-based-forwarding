@@ -33,7 +33,7 @@ def compute_packet_generation_times(mean_production_interval):
     # Create as many random generation intervals as there is (on average) time for in the simulation
     inter_arrival_time_samples = \
         np.random.exponential(mean_production_interval,
-                              size=int((Config.max_sim_time/Config.mean_packet_production_interval)/5))
+                              size=int((Config.max_sim_time/Config.mean_packet_production_interval)/Config.generation_one_on_n))
 
     inter_arrival_times = (np.ceil(inter_arrival_time_samples
                                    / Config.simulation_interval) * Config.simulation_interval).astype(int)
