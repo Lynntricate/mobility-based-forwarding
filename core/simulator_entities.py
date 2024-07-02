@@ -423,7 +423,7 @@ class Node:
             c_time=self.sim_time,
             hop_count=0,
             payload=payload,
-            tx_time=100,
+            tx_time=Config.tx_time,
             tx_mode=tx_mode
         )
         # relay = self.select_relay(destination_id, strategy=Config.strategy)

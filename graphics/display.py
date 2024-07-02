@@ -98,7 +98,7 @@ class Simulator:
         config_filename = f'config.py'
         result_filename = f'results_{Config.strategy}.csv'
         result_folder = 'results'
-        run = 'test_run_1'
+        run = 'test_run_69'
         dst_dir = f'{result_folder}/{run}/{self.start_time}'
         os.makedirs(dst_dir, exist_ok=True)
         dst_path_config = os.path.join(dst_dir, config_filename)

@@ -1,6 +1,6 @@
 class Config:
-    width = 800
-    height = 800
+    width = 1500
+    height = 1500
 
     min_node_d = 20
     max_node_d = 100
@@ -9,7 +9,7 @@ class Config:
     granularity = 5  # Decimals
 
     num_waypoints = 500
-    h_factor = 1
+    h_factor = 0.2
     # v_factor = 0.1
 
     # node_velocity = 60
@@ -18,7 +18,7 @@ class Config:
     node_velocity_dd = 5
 
     n_nodes = 100
-    node_transmit_power = 150  # Second 3 at 500, first at 200
+    node_transmit_power = 200
 
     frame_interval = 16  # ms
     simulation_interval = 50  # ms
@@ -30,10 +30,10 @@ class Config:
     generation_one_on_n = 10  # ToDo remember
 
     max_tx_failure = 9000
-    max_hops = 6
+    max_hops = 10
     max_queue_length = 15  # 15
     max_packet_age = max_sim_time
-    min_relay_improvement = 1.5  # 1.0
+    tx_time = 400
 
     strategy = 'random'
 
@@ -45,6 +45,8 @@ class Config:
 
     # MBF
     max_vector_age = max_sim_time / 10
+    min_relay_improvement = 1.5  # 1.0
+
     # After a packet has been in the queue for this time, it will be forwarded, regardless of vector, if possible
     queue_remain_time = max_sim_time / 30
 
